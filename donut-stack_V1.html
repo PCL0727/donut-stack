@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>甜甜圈疊疊樂</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    height: 100dvh;
+    background: radial-gradient(ellipse at 50% -10%, #3a241b 0%, #1c110c 60%, #130b08 100%);
+    font-family: 'Noto Sans TC', sans-serif;
+    color: #FBEEDD;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .wrap { display:flex; flex-direction:column; align-items:center; gap:10px; padding: 14px; width: 100%; }
+  .sign {
+    font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+    font-weight: 700; font-size: 13px; letter-spacing: 3px;
+    color: #FF3E8E; text-shadow: 0 0 6px #FF3E8E, 0 0 16px rgba(255,62,142,0.6);
+    text-transform: uppercase;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sign { animation: flicker 3.2s infinite; }
+  }
+  @keyframes flicker {
+    0%, 92%, 100% { opacity: 1; }
+    93% { opacity: 0.35; }
+    94% { opacity: 1; }
+    95% { opacity: 0.5; }
+    96% { opacity: 1; }
+  }
+  .stage {
+    position: relative;
+    /* 寬度由 JS 依實際視窗寬高即時計算後寫入 --stage-w 變數,
+       這裡的 min(92vw,380px) 只是 JS 尚未執行前極短暫的預設值 */
+    width: var(--stage-w, min(92vw, 380px));
+    aspect-ratio: 380 / 620;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px #6B4226, 0 0 0 6px #241512, 0 20px 50px rgba(0,0,0,0.6);
+  }
+  canvas { display:block; width:100%; height:100%; touch-action: manipulation; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px;
+    background: rgba(19, 11, 8, 0.82);
+    backdrop-filter: blur(2px);
+  }
+  .overlay.hidden { display: none; }
+
+  .title {
+    font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+    font-weight: 700; font-size: 34px; color: #FBEEDD;
+    text-shadow: 0 0 10px rgba(255,178,62,0.5);
+    margin: 0;
+  }
+  .title .accent { color: #3EFFC0; text-shadow: 0 0 12px rgba(62,255,192,0.8); }
+  .subtitle { font-size: 14px; color: #E4C9AE; line-height: 1.7; max-width: 260px; margin: 0; }
+
+  .btn {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 700; font-size: 16px;
+    color: #241512;
+    background: linear-gradient(180deg, #FFD166 0%, #FFB23E 100%);
+    border: none; border-radius: 999px;
+    padding: 14px 34px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #B8791D, 0 6px 16px rgba(255,178,62,0.35);
+    transition: transform 0.08s ease;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #B8791D; }
+  .btn.ghost {
+    background: transparent; color: #3EFFC0; border: 2px solid #3EFFC0;
+    box-shadow: none; font-size: 13px; padding: 8px 20px;
+  }
+
+  .receipt {
+    position: relative;
+    background: #FBEEDD; color: #241512;
+    border-radius: 4px;
+    padding: 18px 22px 24px;
+    width: 220px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  }
+  .receipt::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -9px; height: 18px;
+    background:
+      linear-gradient(-45deg, transparent 9px, #FBEEDD 0) 0 0,
+      linear-gradient(45deg, transparent 9px, #FBEEDD 0) 0 0;
+    background-size: 18px 18px; background-repeat: repeat-x;
+  }
+  .receipt h3 {
+    font-family: 'Fredoka', sans-serif; margin: 0 0 4px; font-size: 15px; letter-spacing: 1px;
+  }
+  .receipt .line { border-top: 1px dashed #b9a68d; margin: 10px 0; }
+  .receipt .row { display:flex; justify-content:space-between; font-size:13px; padding: 3px 0; }
+  .receipt .row b { font-family:'Fredoka',sans-serif; font-size:15px; }
+
+  .hud {
+    position: absolute; top: 14px; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 0 14px; pointer-events: none; z-index: 3;
+  }
+  .score-pill {
+    font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 20px;
+    color: #FBEEDD; background: rgba(36,21,18,0.55);
+    border: 1px solid rgba(255,178,62,0.4);
+    border-radius: 999px; padding: 5px 16px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .hint {
+    position: absolute; bottom: 14px; left: 0; right: 0; text-align:center;
+    font-size: 12px; color: rgba(251,238,221,0.55); pointer-events:none; z-index:3;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sign">★ 24 小時營業 · 甜甜圈工坊 ★</div>
+
+  <div class="stage" id="stage">
+    <canvas id="game"></canvas>
+
+    <div class="hud">
+      <div class="score-pill">🍩 <span id="scoreVal">0</span></div>
+    </div>
+    <div class="hint" id="hint">點擊畫面 / 按空白鍵 放手讓甜甜圈落下</div>
+
+    <div class="overlay" id="startOverlay">
+      <h1 class="title">甜甜圈<span class="accent">疊疊樂</span></h1>
+      <p class="subtitle">第一個甜甜圈按下就會落下，落在哪裡就是基準位置。<br>之後每一個都要對準它放手，偏了就會彈開掉落，疊得越高擺動越快！</p>
+      <button class="btn" id="startBtn">開始營業</button>
+    </div>
+
+    <div class="overlay hidden" id="overOverlay">
+      <h1 class="title" style="font-size:26px;">甜甜圈塔<span class="accent">崩塌了</span></h1>
+      <div class="receipt">
+        <h3>結帳收據</h3>
+        <div class="row"><span>本次疊層</span><b id="finalScore">0</b></div>
+        <div class="row"><span>最佳紀錄</span><b id="bestScore">0</b></div>
+        <div class="line"></div>
+        <div class="row" style="font-size:11px;color:#8a7863;"><span>謝謝惠顧，歡迎再來</span><span>✓</span></div>
+      </div>
+      <button class="btn" id="retryBtn">再開一次</button>
+      <button class="btn ghost" id="menuBtn">回到招牌</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const startOverlay = document.getElementById('startOverlay');
+  const overOverlay = document.getElementById('overOverlay');
+  const scoreVal = document.getElementById('scoreVal');
+  const finalScoreEl = document.getElementById('finalScore');
+  const bestScoreEl = document.getElementById('bestScore');
+  const hint = document.getElementById('hint');
+
+  const wrapEl = document.querySelector('.wrap');
+  const signEl = document.querySelector('.sign');
+  const W = 380, H = 620;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // 直接讀取目前視窗的實際寬高(window.innerWidth/innerHeight)來算出舞台
+  // 該有的寬度,而不是交給 CSS 的 vh/dvh 計算 —— 部分筆電瀏覽器(尤其開著作業系統
+  // 縮放比例時)第一次繪製時 vh/dvh 算出來的值會不準,要等視窗尺寸變動一次
+  // (例如縮放頁面)才會重新算對;改成 JS 主動量測就能一開始就拿到正確數字。
+  function computeStageSize(){
+    const cs = getComputedStyle(wrapEl);
+    const padH = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const gap = parseFloat(cs.rowGap || cs.gap) || 10;
+    const signH = signEl.offsetHeight || 20;
+    const availW = window.innerWidth - padH;
+    const availH = window.innerHeight - padV - gap - signH;
+    const ratio = H / W;
+    let w = Math.min(availW, availH / ratio, 480);
+    w = Math.max(200, w);
+    document.documentElement.style.setProperty('--stage-w', w + 'px');
+  }
+
+  // 遊戲邏輯座標永遠是 380x620,實際畫布解析度則依照 .stage 目前渲染出來的
+  // CSS 尺寸 x 裝置畫素密度來設定,並用 setTransform 做等比例縮放。
+  // 這樣不管畫面被 CSS 縮到多大/多小(手機/平板/筆電),畫質都維持清晰,
+  // 也不需要更動任何繪圖座標。
+  function fitCanvas(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    const cssW = rect.width || W;
+    const cssH = rect.height || H;
+    canvas.width = Math.max(1, Math.round(cssW * DPR));
+    canvas.height = Math.max(1, Math.round(cssH * DPR));
+    const scale = (cssW / W) * DPR;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  }
+
+  function handleViewportChange(){
+    computeStageSize();
+    fitCanvas();
+  }
+
+  handleViewportChange();
+  window.addEventListener('resize', handleViewportChange);
+  window.addEventListener('orientationchange', () => setTimeout(handleViewportChange, 150));
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', handleViewportChange);
+  }
+  if (window.ResizeObserver){
+    new ResizeObserver(fitCanvas).observe(canvas);
+  }
+  if (document.fonts && document.fonts.ready){
+    document.fonts.ready.then(handleViewportChange);
+  }
+
+  const PALETTE = [
+    { top: '#FF6FA8', base: '#E23E7C' },
+    { top: '#FFC24F', base: '#E8961F' },
+    { top: '#5CFFC8', base: '#22C48F' },
+    { top: '#8E7BFF', base: '#5B45E0' },
+    { top: '#FF8A5C', base: '#E8552A' },
+    { top: '#FFE45C', base: '#E8B916' },
+    { top: '#7CE07A', base: '#3FA53D' },
+    { top: '#FF8FD1', base: '#E559A8' },
+  ];
+
+  const swingY = 92;
+  const dockY = 460;
+  const floorY = 520;
+  const layerHeight = 30;
+  const OUTER_RX = 64;
+  const DOUGH_H = 38, ICING_H = 22;
+  const TOLERANCE = 17;
+  const GRAVITY = 0.45;
+  const MAX_FALL_SPEED = 11;
+
+  let state = 'start';
+  let layers = [];
+  let current = null;
+  let popups = [];
+  let cameraOffset = 0, targetCameraOffset = 0;
+  let score = 0, best = 0;
+  let shakeTime = 0;
+  let failTimer = 0;
+
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e) { audioCtx = null; }
+    }
+  }
+  function beep(freq, dur, type, gain){
+    if (!audioCtx) return;
+    try {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      g.gain.value = gain || 0.06;
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      osc.stop(audioCtx.currentTime + dur);
+    } catch(e) {}
+  }
+
+  function darken(hex, amt){
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    r = Math.max(0, Math.floor(r * (1 - amt)));
+    g = Math.max(0, Math.floor(g * (1 - amt)));
+    b = Math.max(0, Math.floor(b * (1 - amt)));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function genSprinkles(){
+    const arr = [];
+    const count = 8;
+    for (let i = 0; i < count; i++){
+      arr.push({
+        fx: (Math.random() - 0.5) * 1.5,
+        fy: 0.15 + Math.random() * 0.62,
+        rot: Math.random() * Math.PI,
+        c: ['#fff', '#241512', '#FFE45C', '#5CFFC8'][Math.floor(Math.random()*4)]
+      });
+    }
+    return arr;
+  }
+
+  function spawnPopup(text, x, y, big){
+    popups.push({ text, x, y, alpha: 1, vy: -0.6, big });
+  }
+
+  function resetGame(){
+    layers = [];
+    popups = [];
+    score = 0;
+    cameraOffset = 0; targetCameraOffset = 0;
+    shakeTime = 0; failTimer = 0;
+    scoreVal.textContent = '0';
+    spawnNext();
+  }
+
+  function spawnNext(){
+    const i = layers.length;
+    const speed = Math.min(1.7 + i * 0.09, 6.8);
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    const minX = OUTER_RX + 16, maxX = W - OUTER_RX - 16;
+    current = {
+      x: dir === 1 ? minX : maxX,
+      y: swingY,
+      dir, speed,
+      vx: 0, vy: 0, rot: 0, rotSpeed: 0,
+      mode: 'aiming',
+      colorIndex: i % PALETTE.length,
+      sprinkles: genSprinkles()
+    };
+  }
+
+  function updateCameraTarget(){
+    targetCameraOffset = Math.max(0, dockY - (floorY - layers.length * layerHeight));
+  }
+
+  function drop(){
+    if (state !== 'playing' || !current || current.mode !== 'aiming') return;
+    ensureAudio();
+    current.mode = 'falling';
+  }
+
+  function land(){
+    const baseX = layers.length > 0 ? layers[0].x : current.x;
+    const dx = current.x - baseX;
+    if (Math.abs(dx) <= TOLERANCE || layers.length === 0){
+      layers.push({ x: baseX, colorIndex: current.colorIndex, sprinkles: current.sprinkles });
+      score = layers.length;
+      scoreVal.textContent = String(score);
+      shakeTime = 6;
+      beep(880, 0.12, 'sine', 0.05);
+      beep(1320, 0.1, 'sine', 0.03);
+      spawnPopup(`第 ${score} 顆！`, baseX, dockY - 40 + cameraOffset, score > 1 && score % 5 === 0);
+      updateCameraTarget();
+      spawnNext();
+      state = 'playing';
+    } else {
+      current.mode = 'failing';
+      current.vy = -6.5;
+      current.vx = Math.sign(dx) * (3 + Math.random() * 2);
+      current.rotSpeed = Math.sign(dx) * (0.14 + Math.random() * 0.08);
+      failTimer = 70;
+      beep(160, 0.35, 'sawtooth', 0.05);
+      state = 'failing';
+    }
+  }
+
+  function endGame(){
+    state = 'over';
+    best = Math.max(best, score);
+    finalScoreEl.textContent = String(score);
+    bestScoreEl.textContent = String(best);
+    overOverlay.classList.remove('hidden');
+    hint.style.opacity = '0';
+  }
+
+  function startGame(){
+    resetGame();
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    overOverlay.classList.add('hidden');
+    hint.style.opacity = '1';
+    ensureAudio();
+  }
+
+  function update(){
+    cameraOffset += (targetCameraOffset - cameraOffset) * 0.15;
+    if (shakeTime > 0) shakeTime--;
+
+    if ((state === 'playing' || state === 'failing') && current){
+      if (current.mode === 'aiming'){
+        current.x += current.dir * current.speed;
+        const minX = OUTER_RX + 16, maxX = W - OUTER_RX - 16;
+        if (current.x < minX){ current.x = minX; current.dir = 1; }
+        if (current.x > maxX){ current.x = maxX; current.dir = -1; }
+      } else if (current.mode === 'falling'){
+        current.vy = Math.min(current.vy + GRAVITY, MAX_FALL_SPEED);
+        current.y += current.vy;
+        const landingY = floorY - layers.length * layerHeight + cameraOffset;
+        if (current.y >= landingY){
+          current.y = landingY;
+          land();
+        }
+      } else if (current.mode === 'failing'){
+        current.vy += GRAVITY;
+        current.x += current.vx;
+        current.y += current.vy;
+        current.rot += current.rotSpeed;
+        failTimer--;
+        if (failTimer <= 0 || current.y > H + 100){
+          endGame();
+        }
+      }
+    }
+
+    for (let i = popups.length - 1; i >= 0; i--){
+      const pop = popups[i];
+      pop.y += pop.vy; pop.alpha -= 0.018;
+      if (pop.alpha <= 0) popups.splice(i, 1);
+    }
+  }
+
+  function roundRectPath(x, y, w, h, r){
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+    ctx.lineTo(x + rr, y + h);
+    ctx.arcTo(x, y + h, x, y + h - rr, rr);
+    ctx.lineTo(x, y + rr);
+    ctx.arcTo(x, y, x + rr, y, rr);
+    ctx.closePath();
+  }
+
+  function drawDonut(x, y, colorIndex, sprinkles){
+    const rx = OUTER_RX, dh = DOUGH_H, ih = ICING_H;
+    const col = PALETTE[colorIndex % PALETTE.length];
+    const top = y - dh / 2;
+
+    // dough body (side-view capsule)
+    roundRectPath(x - rx, top, rx * 2, dh, dh / 2);
+    const doughGrad = ctx.createLinearGradient(0, top, 0, top + dh);
+    doughGrad.addColorStop(0, '#E8B979');
+    doughGrad.addColorStop(1, '#B97A3E');
+    ctx.fillStyle = doughGrad;
+    ctx.fill();
+
+    // icing coating, clipped to the dough silhouette so it wraps the rounded ends
+    ctx.save();
+    roundRectPath(x - rx, top, rx * 2, dh, dh / 2);
+    ctx.clip();
+
+    const icingGrad = ctx.createLinearGradient(0, top, 0, top + ih);
+    icingGrad.addColorStop(0, col.top);
+    icingGrad.addColorStop(1, col.base);
+    ctx.fillStyle = icingGrad;
+    ctx.fillRect(x - rx - 2, top - 2, rx * 2 + 4, ih);
+
+    // drips hanging from the icing edge
+    ctx.fillStyle = col.base;
+    const drips = [-0.5, -0.05, 0.42];
+    for (const d of drips){
+      const dx2 = x + d * rx * 1.5;
+      const dripLen = 6 + Math.abs(Math.sin(d * 9)) * 8;
+      ctx.beginPath();
+      ctx.moveTo(dx2 - 6, top + ih - 2);
+      ctx.quadraticCurveTo(dx2, top + ih + dripLen, dx2 + 6, top + ih - 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // gloss highlight
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(x - rx * 0.25, top + ih * 0.35, rx * 0.55, ih * 0.3, -0.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+
+    // sprinkles on the icing
+    for (const s of sprinkles){
+      const sx = x + s.fx * rx * 0.75;
+      const sy = top + s.fy * ih;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(s.rot);
+      ctx.fillStyle = s.c;
+      ctx.fillRect(-3, -1, 6, 2);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // outline
+    roundRectPath(x - rx, top, rx * 2, dh, dh / 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = darken(col.base, 0.35);
+    ctx.stroke();
+
+    // icing edge line
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x - rx + 4, top + ih);
+    ctx.lineTo(x + rx - 4, top + ih);
+    ctx.strokeStyle = darken(col.base, 0.2);
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBackground(){
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#3a241b');
+    g.addColorStop(0.55, '#241512');
+    g.addColorStop(1, '#150c08');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const bokeh = [[60,90,26,'rgba(255,62,142,0.10)'],[320,60,20,'rgba(62,255,192,0.09)'],[330,300,30,'rgba(255,178,62,0.07)'],[40,420,22,'rgba(255,62,142,0.06)']];
+    for (const [bx,by,br,bc] of bokeh){
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI*2);
+      ctx.fillStyle = bc;
+      ctx.fill();
+    }
+  }
+
+  function drawBase(){
+    const y = floorY + cameraOffset + DOUGH_H / 2 + 6;
+    if (y > H + 40 || y < -40) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(W/2, y, OUTER_RX + 20, 14, 0, 0, Math.PI * 2);
+    const g = ctx.createLinearGradient(0, y - 14, 0, y + 14);
+    g.addColorStop(0, '#7a4d2c');
+    g.addColorStop(1, '#4a2e1c');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#2e1c10';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw(){
+    ctx.save();
+    if (shakeTime > 0){
+      ctx.translate((Math.random()-0.5)*shakeTime*0.6, (Math.random()-0.5)*shakeTime*0.6);
+    }
+    drawBackground();
+    drawBase();
+
+    for (let i = 0; i < layers.length; i++){
+      const layer = layers[i];
+      const y = floorY - i * layerHeight + cameraOffset;
+      if (y < -30 || y > H + 30) continue;
+      drawDonut(layer.x, y, layer.colorIndex, layer.sprinkles, 1);
+    }
+
+    if (current && (state === 'playing' || state === 'failing')){
+      drawDonutRotated(current);
+    }
+
+    for (const pop of popups){
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pop.alpha);
+      ctx.fillStyle = '#FFB23E';
+      ctx.font = (pop.big ? 'bold 18px' : 'bold 14px') + ` 'Fredoka', 'Noto Sans TC', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,178,62,0.6)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawDonutRotated(c){
+    if (c.mode === 'failing' && c.rot){
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.rot);
+      drawDonut(0, 0, c.colorIndex, c.sprinkles, 1);
+      ctx.restore();
+    } else {
+      drawDonut(c.x, c.y, c.colorIndex, c.sprinkles, 1);
+    }
+  }
+
+  function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function handleAction(){
+    if (state === 'start'){ startGame(); }
+    else if (state === 'playing'){ drop(); }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleAction(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'Enter'){
+      e.preventDefault();
+      handleAction();
+    }
+  });
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('retryBtn').addEventListener('click', startGame);
+  document.getElementById('menuBtn').addEventListener('click', () => {
+    state = 'start';
+    overOverlay.classList.add('hidden');
+    startOverlay.classList.remove('hidden');
+    hint.style.opacity = '0';
+  });
+
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
